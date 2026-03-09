@@ -13,8 +13,9 @@ param(
 )
 
 if ($Install) {
-    $installDir  = "C:\tools\coreboot"
+    $installDir  = Join-Path $env:LOCALAPPDATA "coreboot"
     $installPath = Join-Path $installDir "coreboot.ps1"
+    $wrapperPath = Join-Path $installDir "coreboot.cmd"
 
     $sourcePath = $MyInvocation.MyCommand.Path
     if (-not $sourcePath) {
@@ -30,33 +31,19 @@ if ($Install) {
     Copy-Item -Path $sourcePath -Destination $installPath -Force
     Write-Host "  Copied script to: $installPath" -ForegroundColor DarkGray
 
-    $profilePath = $PROFILE.CurrentUserCurrentHost
-    $marker = "# coreboot-function"
-    $functionBlock = @"
+    Set-Content -Path $wrapperPath -Value '@echo off powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0coreboot.ps1" %*' -Encoding ASCII
+    Write-Host "  Created wrapper: $wrapperPath" -ForegroundColor DarkGray
 
-$marker
-function coreboot { & '$installPath' @args }
-$marker
-"@
-
-    if (-not (Test-Path $profilePath)) {
-        New-Item -Path $profilePath -ItemType File -Force | Out-Null
-        Write-Host "  Created profile: $profilePath" -ForegroundColor DarkGray
-    }
-
-    $profileContent = Get-Content $profilePath -Raw -ErrorAction SilentlyContinue
-    if ($profileContent -and $profileContent.Contains($marker)) {
-        $pattern = "(?s)$([regex]::Escape($marker)).*?$([regex]::Escape($marker))"
-        $profileContent = [regex]::Replace($profileContent, $pattern, $functionBlock.Trim())
-        Set-Content -Path $profilePath -Value $profileContent -NoNewline
-        Write-Host "  Updated existing coreboot function in profile." -ForegroundColor Yellow
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($userPath -notlike "*$installDir*") {
+        [Environment]::SetEnvironmentVariable("Path", "$userPath;$installDir", "User")
+        Write-Host "  Added $installDir to user PATH." -ForegroundColor Green
     } else {
-        Add-Content -Path $profilePath -Value $functionBlock
-        Write-Host "  Added coreboot function to profile." -ForegroundColor Green
+        Write-Host "  $installDir already in PATH." -ForegroundColor DarkGray
     }
 
     Write-Host ""
-    Write-Host "  Installed to: $installPath" -ForegroundColor Green
+    Write-Host "  Installed to: $installDir" -ForegroundColor Green
     Write-Host "  Restart your terminal, then run:" -ForegroundColor White
     Write-Host "    coreboot <project> <pc|mobile> [rootpath]" -ForegroundColor Cyan
     Write-Host ""
@@ -126,8 +113,8 @@ $found = $false
 while ($elapsed -lt $waitSeconds) {
     $frame = $spinner[$elapsed % 4]
     $bar = "[" + ("=" * $elapsed) + (" " * ($waitSeconds - $elapsed)) + "]"
-    $status = if ($found) { "Index.html found! Finalizing gulp run..." } else { "waiting for index.html..." }
-    Write-Host ("`r  $frame $bar $elapsed/${waitSeconds}s  $status  ") -NoNewline -ForegroundColor $(if ($found) { "Green" } else { "DarkCyan" })
+    $status = if ($found) { "starting app..." } else { "waiting for index.html..." }
+    Write-Host ("`r  $frame $bar $elapsed/${waitSeconds}s  $status  ") -NoNewline -ForegroundColor $(if ($found) { "Yellow" } else { "DarkCyan" })
 
     if (-not $found -and (Test-Path (Join-Path $HtmlPath "index.html"))) {
         $found = $true
@@ -138,7 +125,7 @@ while ($elapsed -lt $waitSeconds) {
 }
 
 $finalStatus = if ($found) { "Build ready." } else { "dist/html not found yet - BrowserSync will reload once files appear." }
-$finalColor = if ($found) { "Green" } else { "Yellow" }
+$finalColor = if ($found) { "Yellow" } else { "Yellow" }
 Write-Host ("`r  $(' ' * 60)") -NoNewline
 Write-Host "`r  $finalStatus" -ForegroundColor $finalColor
 Write-Host ""

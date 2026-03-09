@@ -37,7 +37,7 @@ Documents/
       gulpfile.js
 ```
 
-The script itself is installed to a fixed location (`C:\tools\coreboot\coreboot.ps1`) so it won't be affected if you move or delete the original download.
+The script itself is installed to `%LOCALAPPDATA%\coreboot\` (e.g. `C:\Users\<you>\AppData\Local\coreboot\`) so it won't be affected if you move or delete the original download.
 
 ## Installation
 
@@ -45,8 +45,11 @@ The script itself is installed to a fixed location (`C:\tools\coreboot\coreboot.
 
 Double-click `install-coreboot.cmd`. This will:
 
-1. Copy the script to `C:\tools\coreboot\`
-2. Register the `coreboot` command in your PowerShell profile
+1. Copy the script to `%LOCALAPPDATA%\coreboot\`
+2. Create a `coreboot.cmd` wrapper in the same folder
+3. Add the folder to your user PATH
+
+No PowerShell profile changes are needed — works with Symantec/endpoint protection policies.
 
 Restart your terminal after installing.
 
