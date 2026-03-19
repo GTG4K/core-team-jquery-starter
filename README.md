@@ -72,19 +72,59 @@ When `-ApiProxy` is provided, the value is saved to `%LOCALAPPDATA%\coreboot\pro
 
 ### Examples
 
+#### Basic usage
+
 ```powershell
-# Standard usage (api-proxy uses goldenbet.com)
+# PC project — uses Documents as root, api-proxy defaults to goldenbet.com
 coreboot goldenbet pc
 
-# Custom api-proxy (saves donbet-co -> donbet.co for future runs)
-coreboot donbet-co mobile -ApiProxy "donbet.co"
+# Mobile project
+coreboot goldenbet mobile
+```
 
-# Next time, no need to pass -ApiProxy again
-coreboot donbet-co mobile
+#### Custom root path (`-RootPath`)
 
-# Set a custom root folder (saved for future runs)
+```powershell
+# First time: set root to Desktop\Projects (saved for all future runs)
 coreboot goldenbet pc -RootPath "$HOME\Desktop\Projects"
 
-# Next time, no need to pass -RootPath again
+# Every run after this uses Desktop\Projects automatically — no flag needed
+coreboot goldenbet pc
+coreboot donbet-co mobile
+
+# Override with a different path (updates the saved value)
+coreboot goldenbet pc -RootPath "D:\Work"
+```
+
+#### Custom API proxy (`-ApiProxy`)
+
+```powershell
+# First time: set proxy for donbet-co (saved per project)
+coreboot donbet-co mobile -ApiProxy "donbet.co"
+
+# Every run of donbet-co after this reuses donbet.co — no flag needed
+coreboot donbet-co mobile
+
+# Other projects are not affected — goldenbet still defaults to goldenbet.com
 coreboot goldenbet pc
 ```
+
+#### Combining both
+
+```powershell
+# Set root path and api-proxy in one go
+coreboot donbet-co mobile -RootPath "$HOME\Desktop\Projects" -ApiProxy "donbet.co"
+
+# Future runs need neither flag
+coreboot donbet-co mobile
+```
+
+#### How saved values work
+
+| Scenario                   | Root path used              | API proxy used                    |
+| -------------------------- | --------------------------- | --------------------------------- |
+| First run, no flags        | Documents                   | `<project>.com`                   |
+| `-RootPath` provided       | The path you gave (saved)   | `<project>.com`                   |
+| `-ApiProxy` provided       | Documents                   | The proxy you gave (saved)        |
+| Later run, no flags        | Last saved root path        | Last saved proxy for that project |
+| `-RootPath` provided again | New path (overwrites saved) | Last saved proxy for that project |
