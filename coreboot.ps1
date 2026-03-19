@@ -6,7 +6,6 @@ param(
     [ValidateSet("pc", "mobile", IgnoreCase=$true)]
     [string]$Platform,
 
-    [Parameter(Position=2)]
     [string]$RootPath,
 
     [string]$ApiProxy,
@@ -47,21 +46,61 @@ if ($Install) {
     Write-Host ""
     Write-Host "  Installed to: $installDir" -ForegroundColor Green
     Write-Host "  Restart your terminal, then run:" -ForegroundColor White
-    Write-Host "    coreboot <project> <pc|mobile> [rootpath] [-ApiProxy `"domain.tld`"]" -ForegroundColor Cyan
+    Write-Host "    coreboot <project> <pc|mobile> [-RootPath `"path`"] [-ApiProxy `"domain.tld`"]" -ForegroundColor Cyan
     Write-Host ""
     exit 0
 }
 
 if (-not $ProjectName -or -not $Platform) {
     Write-Host ""
-    Write-Host "  Usage:  coreboot <project> <pc|mobile> [rootpath] [-ApiProxy `"domain.tld`"]" -ForegroundColor Cyan
+    Write-Host "  Usage:  coreboot <project> <pc|mobile> [-RootPath `"path`"] [-ApiProxy `"domain.tld`"]" -ForegroundColor Cyan
     Write-Host "  Install: .\bootstrap.ps1 -Install" -ForegroundColor DarkGray
     Write-Host ""
     exit 1
 }
 
+# --- Config directory ---
+$configDir = Join-Path $env:LOCALAPPDATA "coreboot"
+if (-not (Test-Path $configDir)) {
+    New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+}
+
+# --- RootPath: validate, persist, and resolve ---
+$rootPathMapPath = Join-Path $configDir "rootpath-map.json"
+$rootPathMap = @{}
+
+if (Test-Path $rootPathMapPath) {
+    try {
+        $raw = Get-Content $rootPathMapPath -Raw | ConvertFrom-Json
+        $raw.PSObject.Properties | ForEach-Object { $rootPathMap[$_.Name] = $_.Value }
+    } catch {
+        Write-Host "  Warning: could not read rootpath-map.json, starting fresh." -ForegroundColor Yellow
+    }
+}
+
+if ($RootPath) {
+    if (-not (Test-Path $RootPath)) {
+        Write-Host ""
+        Write-Host "  Error: -RootPath '$RootPath' does not exist." -ForegroundColor Red
+        Write-Host ""
+        exit 1
+    }
+
+    $rootPathMap["default"] = $RootPath
+    $rootPathMap | ConvertTo-Json | Set-Content $rootPathMapPath -Encoding UTF8
+    Write-Host "  Saved root path: $RootPath" -ForegroundColor DarkGray
+}
+
+$DocsRoot = if ($RootPath) {
+    $RootPath
+} elseif ($rootPathMap.ContainsKey("default")) {
+    $rootPathMap["default"]
+} else {
+    [Environment]::GetFolderPath("MyDocuments")
+}
+
 # --- ApiProxy: validate, persist, and resolve ---
-$proxyMapPath = Join-Path $env:LOCALAPPDATA "coreboot\proxy-map.json"
+$proxyMapPath = Join-Path $configDir "proxy-map.json"
 $proxyMap = @{}
 
 if (Test-Path $proxyMapPath) {
@@ -82,11 +121,6 @@ if ($ApiProxy) {
     }
 
     $proxyMap[$ProjectName] = $ApiProxy
-
-    $proxyDir = Split-Path $proxyMapPath
-    if (-not (Test-Path $proxyDir)) {
-        New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
-    }
     $proxyMap | ConvertTo-Json | Set-Content $proxyMapPath -Encoding UTF8
     Write-Host "  Saved api-proxy mapping: $ProjectName -> $ApiProxy" -ForegroundColor DarkGray
 }
@@ -98,8 +132,6 @@ $ResolvedProxy = if ($ApiProxy) {
 } else {
     "$ProjectName.com"
 }
-
-$DocsRoot = if ($RootPath) { $RootPath } else { [Environment]::GetFolderPath("MyDocuments") }
 $PlatformFolder = if ($Platform.ToLower() -eq "pc") { "PC" } else { "Mobile" }
 $ProjectPath = Join-Path $DocsRoot $ProjectName
 $PlatformPath = Join-Path $ProjectPath $PlatformFolder
@@ -133,6 +165,7 @@ Write-Host ""
 Write-Host "  Starting dev environment" -ForegroundColor Cyan
 Write-Host "  Project:  $ProjectName" -ForegroundColor White
 Write-Host "  Platform: $PlatformFolder" -ForegroundColor White
+Write-Host "  Root:     $DocsRoot" -ForegroundColor White
 Write-Host "  Proxy:    $ResolvedProxy" -ForegroundColor White
 Write-Host ""
 Write-Host "  [1] GULP RUN     -> git pull && npm i && gulp run ($PlatformPath)" -ForegroundColor Cyan

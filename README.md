@@ -56,15 +56,17 @@ Restart your terminal after installing.
 ## Usage
 
 ```powershell
-coreboot <project> <platform> [rootpath] [-ApiProxy "domain.tld"]
+coreboot <project> <platform> [-RootPath "path"] [-ApiProxy "domain.tld"]
 ```
 
-| Argument    | Required | Description                                                  |
-| ----------- | -------- | ------------------------------------------------------------ |
-| `project`   | Yes      | Project folder name (e.g. `goldenbet`, `donbet-co`)          |
-| `platform`  | Yes      | `pc` or `mobile`                                             |
-| `rootpath`  | No       | Override the root folder (defaults to Documents)             |
-| `-ApiProxy` | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project. |
+| Argument    | Required | Description                                                       |
+| ----------- | -------- | ----------------------------------------------------------------- |
+| `project`   | Yes      | Project folder name (e.g. `goldenbet`, `donbet-co`)               |
+| `platform`  | Yes      | `pc` or `mobile`                                                  |
+| `-RootPath` | No       | Override the root folder (defaults to Documents). Saved globally. |
+| `-ApiProxy` | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project.      |
+
+When `-RootPath` is provided, the value is saved to `%LOCALAPPDATA%\coreboot\rootpath-map.json` so future runs will reuse it automatically. If omitted and no saved path exists, the default Documents folder is used.
 
 When `-ApiProxy` is provided, the value is saved to `%LOCALAPPDATA%\coreboot\proxy-map.json` so future runs of the same project will reuse it automatically. If omitted and no saved mapping exists, the default `<project>.com` is used.
 
@@ -80,6 +82,9 @@ coreboot donbet-co mobile -ApiProxy "donbet.co"
 # Next time, no need to pass -ApiProxy again
 coreboot donbet-co mobile
 
-# Projects in a custom folder
-coreboot goldenbet pc -RootPath "D:\Projects"
+# Set a custom root folder (saved for future runs)
+coreboot goldenbet pc -RootPath "$HOME\Desktop\Projects"
+
+# Next time, no need to pass -RootPath again
+coreboot goldenbet pc
 ```
