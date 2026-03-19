@@ -9,6 +9,8 @@ param(
     [Parameter(Position=2)]
     [string]$RootPath,
 
+    [string]$ApiProxy,
+
     [switch]$Install
 )
 
@@ -45,17 +47,56 @@ if ($Install) {
     Write-Host ""
     Write-Host "  Installed to: $installDir" -ForegroundColor Green
     Write-Host "  Restart your terminal, then run:" -ForegroundColor White
-    Write-Host "    coreboot <project> <pc|mobile> [rootpath]" -ForegroundColor Cyan
+    Write-Host "    coreboot <project> <pc|mobile> [rootpath] [-ApiProxy `"domain.tld`"]" -ForegroundColor Cyan
     Write-Host ""
     exit 0
 }
 
 if (-not $ProjectName -or -not $Platform) {
     Write-Host ""
-    Write-Host "  Usage:  coreboot <project> <pc|mobile> [rootpath]" -ForegroundColor Cyan
+    Write-Host "  Usage:  coreboot <project> <pc|mobile> [rootpath] [-ApiProxy `"domain.tld`"]" -ForegroundColor Cyan
     Write-Host "  Install: .\bootstrap.ps1 -Install" -ForegroundColor DarkGray
     Write-Host ""
     exit 1
+}
+
+# --- ApiProxy: validate, persist, and resolve ---
+$proxyMapPath = Join-Path $env:LOCALAPPDATA "coreboot\proxy-map.json"
+$proxyMap = @{}
+
+if (Test-Path $proxyMapPath) {
+    try {
+        $raw = Get-Content $proxyMapPath -Raw | ConvertFrom-Json
+        $raw.PSObject.Properties | ForEach-Object { $proxyMap[$_.Name] = $_.Value }
+    } catch {
+        Write-Host "  Warning: could not read proxy-map.json, starting fresh." -ForegroundColor Yellow
+    }
+}
+
+if ($ApiProxy) {
+    if ($ApiProxy -notmatch '\.') {
+        Write-Host ""
+        Write-Host "  Error: -ApiProxy value '$ApiProxy' is invalid. It must contain at least one '.' (e.g. 'donbet.co')." -ForegroundColor Red
+        Write-Host ""
+        exit 1
+    }
+
+    $proxyMap[$ProjectName] = $ApiProxy
+
+    $proxyDir = Split-Path $proxyMapPath
+    if (-not (Test-Path $proxyDir)) {
+        New-Item -ItemType Directory -Path $proxyDir -Force | Out-Null
+    }
+    $proxyMap | ConvertTo-Json | Set-Content $proxyMapPath -Encoding UTF8
+    Write-Host "  Saved api-proxy mapping: $ProjectName -> $ApiProxy" -ForegroundColor DarkGray
+}
+
+$ResolvedProxy = if ($ApiProxy) {
+    $ApiProxy
+} elseif ($proxyMap.ContainsKey($ProjectName)) {
+    $proxyMap[$ProjectName]
+} else {
+    "$ProjectName.com"
 }
 
 $DocsRoot = if ($RootPath) { $RootPath } else { [Environment]::GetFolderPath("MyDocuments") }
@@ -92,10 +133,11 @@ Write-Host ""
 Write-Host "  Starting dev environment" -ForegroundColor Cyan
 Write-Host "  Project:  $ProjectName" -ForegroundColor White
 Write-Host "  Platform: $PlatformFolder" -ForegroundColor White
+Write-Host "  Proxy:    $ResolvedProxy" -ForegroundColor White
 Write-Host ""
 Write-Host "  [1] GULP RUN     -> git pull && npm i && gulp run ($PlatformPath)" -ForegroundColor Cyan
 Write-Host "  [2] CORE         -> git pull && npm run copydist $CopyDistArgs" -ForegroundColor Green
-Write-Host "  [3] API-PROXY    -> npm run start -- --host $ProjectName.com" -ForegroundColor DarkYellow
+Write-Host "  [3] API-PROXY    -> npm run start -- --host $ResolvedProxy" -ForegroundColor DarkYellow
 Write-Host "  [4] BROWSERSYNC  -> browser-sync in $PlatformFolder\dist (http://localhost:3002/html)" -ForegroundColor Magenta
 Write-Host ""
 
@@ -135,7 +177,7 @@ Start-Process wt -ArgumentList "-w 0 new-tab --title `"CORE`" --tabColor `"#2E7D
 Start-Sleep -Milliseconds 1500
 
 # Step 3: API-PROXY
-Start-Process wt -ArgumentList "-w 0 new-tab --title `"API-PROXY`" --tabColor `"#D4820A`" --suppressApplicationTitle -d `"$ApiProxyPath`" cmd /k npm run start -- --host $ProjectName.com"
+Start-Process wt -ArgumentList "-w 0 new-tab --title `"API-PROXY`" --tabColor `"#D4820A`" --suppressApplicationTitle -d `"$ApiProxyPath`" cmd /k npm run start -- --host $ResolvedProxy"
 Start-Sleep -Milliseconds 1000
 
 # Step 4: BROWSERSYNC - launched last so dist is populated
