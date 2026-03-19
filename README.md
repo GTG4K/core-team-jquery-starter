@@ -56,21 +56,29 @@ Restart your terminal after installing.
 ## Usage
 
 ```powershell
-coreboot <project> <platform> [rootpath]
+coreboot <project> <platform> [rootpath] [-ApiProxy "domain.tld"]
 ```
 
-| Argument   | Required | Description                                      |
-| ---------- | -------- | ------------------------------------------------ |
-| `project`  | Yes      | Project folder name (e.g. `goldenbet`, `donbet`) |
-| `platform` | Yes      | `pc` or `mobile`                                 |
-| `rootpath` | No       | Override the root folder (defaults to Documents) |
+| Argument    | Required | Description                                                  |
+| ----------- | -------- | ------------------------------------------------------------ |
+| `project`   | Yes      | Project folder name (e.g. `goldenbet`, `donbet-co`)          |
+| `platform`  | Yes      | `pc` or `mobile`                                             |
+| `rootpath`  | No       | Override the root folder (defaults to Documents)             |
+| `-ApiProxy` | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project. |
+
+When `-ApiProxy` is provided, the value is saved to `%LOCALAPPDATA%\coreboot\proxy-map.json` so future runs of the same project will reuse it automatically. If omitted and no saved mapping exists, the default `<project>.com` is used.
 
 ### Examples
 
 ```powershell
-# Standard usage
+# Standard usage (api-proxy uses goldenbet.com)
 coreboot goldenbet pc
-coreboot donbet mobile
+
+# Custom api-proxy (saves donbet-co -> donbet.co for future runs)
+coreboot donbet-co mobile -ApiProxy "donbet.co"
+
+# Next time, no need to pass -ApiProxy again
+coreboot donbet-co mobile
 
 # Projects in a custom folder
 coreboot goldenbet pc -RootPath "D:\Projects"
