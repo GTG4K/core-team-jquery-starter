@@ -59,6 +59,27 @@ if (-not $ProjectName -or -not $Platform) {
     exit 1
 }
 
+# --- Node version: require 14 or lower ---
+$nodeVersion = node -v 2>$null
+if ($nodeVersion) {
+    $majorVersion = [int]($nodeVersion -replace '^v(\d+).*', '$1')
+    if ($majorVersion -gt 14) {
+        Write-Host ""
+        Write-Host "  Error: Node $nodeVersion is not supported. This project requires Node 14 or lower." -ForegroundColor Red
+        Write-Host ""
+        exit 1
+    }
+}
+
+# --- Install gulp and browser-sync globally if missing ---
+$toInstall = @()
+if (-not (Get-Command gulp -ErrorAction SilentlyContinue)) { $toInstall += "gulp" }
+if (-not (Get-Command browser-sync -ErrorAction SilentlyContinue)) { $toInstall += "browser-sync" }
+if ($toInstall.Count -gt 0) {
+    Write-Host "  Installing $($toInstall -join ', ') globally..." -ForegroundColor Yellow
+    npm install -g $toInstall
+}
+
 # --- Config directory ---
 $configDir = Join-Path $env:LOCALAPPDATA "coreboot"
 if (-not (Test-Path $configDir)) {
