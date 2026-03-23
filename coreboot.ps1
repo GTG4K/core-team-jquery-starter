@@ -176,7 +176,9 @@ if (-not (Test-Path $CorePath)) {
     Write-Host "core not found at '$CorePath'. Clone the core repo into '$DocsRoot' and try again." -ForegroundColor Red
     exit 1
 }
-if (-not (Test-Path $DistPath)) {
+$isFirstRun = -not (Test-Path $DistPath)
+
+if ($isFirstRun) {
     New-Item -ItemType Directory -Path $DistPath -Force | Out-Null
 }
 
@@ -188,15 +190,37 @@ Write-Host "  Project:  $ProjectName" -ForegroundColor White
 Write-Host "  Platform: $PlatformFolder" -ForegroundColor White
 Write-Host "  Root:     $DocsRoot" -ForegroundColor White
 Write-Host "  Proxy:    $ResolvedProxy" -ForegroundColor White
+
+if ($isFirstRun) {
+    Write-Host ""
+    Write-Host "  First run detected - running npm install before starting..." -ForegroundColor Yellow
+    Write-Host ""
+
+    Push-Location $PlatformPath
+    npm install
+    Pop-Location
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ""
+        Write-Host "  Error: npm install failed. Please check the output above." -ForegroundColor Red
+        Write-Host ""
+        exit 1
+    }
+
+    Write-Host ""
+    Write-Host "  npm install complete." -ForegroundColor Green
+}
+
 Write-Host ""
-Write-Host "  [1] GULP RUN     -> git pull && npm i && gulp run ($PlatformPath)" -ForegroundColor Cyan
+Write-Host "  [1] GULP RUN     -> git pull && gulp run ($PlatformPath)" -ForegroundColor Cyan
 Write-Host "  [2] CORE         -> git pull && npm run copydist $CopyDistArgs" -ForegroundColor Green
 Write-Host "  [3] API-PROXY    -> npm run start -- --host $ResolvedProxy" -ForegroundColor DarkYellow
 Write-Host "  [4] BROWSERSYNC  -> browser-sync in $PlatformFolder\dist (http://localhost:3002/html)" -ForegroundColor Magenta
 Write-Host ""
 
-# Step 1: GULP RUN - needs to build dist first
-Start-Process wt -ArgumentList "--title `"GULP RUN $ProjectName`" --tabColor `"#0097A7`" --suppressApplicationTitle -d `"$PlatformPath`" cmd /k `"git pull & npm i & gulp run`""
+# Step 1: GULP RUN - npm install already handled above on first run; subsequent runs include it
+$gulpCmd = if ($isFirstRun) { "git pull & gulp run" } else { "git pull & npm i & gulp run" }
+Start-Process wt -ArgumentList "--title `"GULP RUN $ProjectName`" --tabColor `"#0097A7`" --suppressApplicationTitle -d `"$PlatformPath`" cmd /k `"$gulpCmd`""
 
 $waitSeconds = 15
 $HtmlPath = Join-Path $DistPath "html"
