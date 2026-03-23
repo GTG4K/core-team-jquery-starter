@@ -153,19 +153,20 @@ $ResolvedProxy = if ($ApiProxy) {
 } else {
     "$ProjectName.com"
 }
-$PlatformFolder = if ($Platform.ToLower() -eq "pc") { "PC" } else { "Mobile" }
-$ProjectPath = Join-Path $DocsRoot $ProjectName
-$PlatformPath = Join-Path $ProjectPath $PlatformFolder
-$DistPath = Join-Path $PlatformPath "dist"
-$ApiProxyPath = Join-Path $DocsRoot "api-proxy"
-$CorePath = Join-Path $DocsRoot "core"
+
+$script:PlatformFolder = if ($Platform.ToLower() -eq "pc") { "PC" } else { "Mobile" }
+$ProjectPath    = Join-Path $DocsRoot $ProjectName
+$script:PlatformPath   = Join-Path $ProjectPath $script:PlatformFolder
+$script:DistPath       = Join-Path $script:PlatformPath "dist"
+$ApiProxyPath   = Join-Path $DocsRoot "api-proxy"
+$CorePath       = Join-Path $DocsRoot "core"
 
 if (-not (Test-Path $ProjectPath)) {
     Write-Host "Project not found: $ProjectPath" -ForegroundColor Red
     exit 1
 }
-if (-not (Test-Path $PlatformPath)) {
-    Write-Host "Platform folder not found: $PlatformPath" -ForegroundColor Red
+if (-not (Test-Path $script:PlatformPath)) {
+    Write-Host "Platform folder not found: $script:PlatformPath" -ForegroundColor Red
     exit 1
 }
 if (-not (Test-Path $ApiProxyPath)) {
@@ -176,27 +177,65 @@ if (-not (Test-Path $CorePath)) {
     Write-Host "core not found at '$CorePath'. Clone the core repo into '$DocsRoot' and try again." -ForegroundColor Red
     exit 1
 }
-$isFirstRun = -not (Test-Path $DistPath)
+
+$isFirstRun = -not (Test-Path $script:DistPath)
 
 if ($isFirstRun) {
-    New-Item -ItemType Directory -Path $DistPath -Force | Out-Null
+    New-Item -ItemType Directory -Path $script:DistPath -Force | Out-Null
 }
 
-$CopyDistArgs = if ($Platform.ToLower() -eq "pc") { $ProjectName } else { "$ProjectName mobile" }
+$script:CopyDistArgs = if ($script:PlatformFolder -eq "PC") { $ProjectName } else { "$ProjectName mobile" }
 
+# --- UI Helpers ---
+function Get-ConsoleWidth {
+    try { [Console]::BufferWidth } catch { 80 }
+}
+
+function Write-Line {
+    param(
+        [string]$Text,
+        [ConsoleColor]$Color = [ConsoleColor]::White,
+        [switch]$NoNewline
+    )
+    $width = Get-ConsoleWidth
+    $padded = $Text.PadRight($width)
+    if ($NoNewline) {
+        Write-Host "`r$padded" -NoNewline -ForegroundColor $Color
+    } else {
+        Write-Host "`r$padded" -ForegroundColor $Color
+    }
+}
+
+function Write-Divider {
+    param([ConsoleColor]$Color = [ConsoleColor]::DarkGray)
+    $width = Get-ConsoleWidth
+    $line = [string]::new([char]0x2500, [Math]::Min($width - 4, 60))
+    Write-Host "  $line" -ForegroundColor $Color
+}
+
+function Write-Section {
+    param([string]$Title, [ConsoleColor]$Color = [ConsoleColor]::Cyan)
+    Write-Host ""
+    Write-Divider
+    Write-Host "  $Title" -ForegroundColor $Color
+    Write-Divider
+    Write-Host ""
+}
+
+# --- Initial Setup ---
+Write-Section "coreboot  -  Dev Environment"
+
+Write-Host "  Project   : $ProjectName" -ForegroundColor White
+Write-Host "  Platform  : $script:PlatformFolder" -ForegroundColor White
+Write-Host "  Root      : $DocsRoot" -ForegroundColor DarkGray
+Write-Host "  API Proxy : $ResolvedProxy" -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "  Starting dev environment" -ForegroundColor Cyan
-Write-Host "  Project:  $ProjectName" -ForegroundColor White
-Write-Host "  Platform: $PlatformFolder" -ForegroundColor White
-Write-Host "  Root:     $DocsRoot" -ForegroundColor White
-Write-Host "  Proxy:    $ResolvedProxy" -ForegroundColor White
 
 if ($isFirstRun) {
-    Write-Host ""
-    Write-Host "  First run detected - running npm install before starting..." -ForegroundColor Yellow
+    Write-Host "  First run detected - installing dependencies..." -ForegroundColor Yellow
     Write-Host ""
 
-    Push-Location $PlatformPath
+    Push-Location $script:PlatformPath
     npm install
     Pop-Location
 
@@ -208,58 +247,221 @@ if ($isFirstRun) {
     }
 
     Write-Host ""
-    Write-Host "  npm install complete." -ForegroundColor Green
+    Write-Host "  Dependencies installed successfully." -ForegroundColor Green
+    Write-Host ""
+    Start-Sleep -Milliseconds 800
 }
 
-Write-Host ""
-Write-Host "  [1] GULP RUN     -> git pull && gulp run ($PlatformPath)" -ForegroundColor Cyan
-Write-Host "  [2] CORE         -> git pull && npm run copydist $CopyDistArgs" -ForegroundColor Green
-Write-Host "  [3] API-PROXY    -> npm run start -- --host $ResolvedProxy" -ForegroundColor DarkYellow
-Write-Host "  [4] BROWSERSYNC  -> browser-sync in $PlatformFolder\dist (http://localhost:3002/html)" -ForegroundColor Magenta
+# --- Clear terminal after setup, redraw header ---
+Clear-Host
+
+Write-Section "coreboot  -  Launching Services"
+
+Write-Host "  Project   : $ProjectName ($script:PlatformFolder)" -ForegroundColor White
+Write-Host "  API Proxy : $ResolvedProxy" -ForegroundColor DarkGray
 Write-Host ""
 
-# Step 1: GULP RUN - npm install already handled above on first run; subsequent runs include it
+$script:childProcs = [System.Collections.ArrayList]::new()
+
+function Stop-AllChildren {
+    Write-Host ""
+    Write-Divider -Color Yellow
+    Write-Host "  Shutting down all services..." -ForegroundColor Yellow
+    Write-Divider -Color Yellow
+    foreach ($proc in $script:childProcs) {
+        try {
+            if ($proc -and -not $proc.HasExited) {
+                & taskkill /T /F /PID $proc.Id 2>$null | Out-Null
+            }
+        } catch {}
+    }
+    Write-Host ""
+    Write-Host "  All services stopped." -ForegroundColor Green
+    Write-Host ""
+}
+
+Register-EngineEvent PowerShell.Exiting -Action { Stop-AllChildren } | Out-Null
+
+# --- Step 1: Gulp Build ---
+Write-Host "  Starting Gulp build..." -ForegroundColor DarkCyan
 $gulpCmd = if ($isFirstRun) { "git pull & gulp run" } else { "git pull & npm i & gulp run" }
-Start-Process wt -ArgumentList "--title `"GULP RUN $ProjectName`" --tabColor `"#0097A7`" --suppressApplicationTitle -d `"$PlatformPath`" cmd /k `"$gulpCmd`""
+$script:childProcs.Add((Start-Process cmd -ArgumentList "/k title GULP RUN $ProjectName & $gulpCmd" -WorkingDirectory $script:PlatformPath -PassThru)) | Out-Null
 
 $waitSeconds = 15
-$HtmlPath = Join-Path $DistPath "html"
-Write-Host ""
+$HtmlPath    = Join-Path $script:DistPath "html"
+$tickMs      = 200
+$totalTicks  = [int]($waitSeconds * 1000 / $tickMs)
+$barWidth    = 20
+$braille     = @([char]0x2801, [char]0x2802, [char]0x2804, [char]0x2840, [char]0x2880, [char]0x2820, [char]0x2810, [char]0x2808)
 
-$elapsed = 0
-$spinner = @("|", "/", "-", "\")
+$tick  = 0
 $found = $false
 
-while ($elapsed -lt $waitSeconds) {
-    $frame = $spinner[$elapsed % 4]
-    $bar = "[" + ("=" * $elapsed) + (" " * ($waitSeconds - $elapsed)) + "]"
-    $status = if ($found) { "starting app..." } else { "waiting for index.html..." }
-    Write-Host ("`r  $frame $bar $elapsed/${waitSeconds}s  $status  ") -NoNewline -ForegroundColor $(if ($found) { "Yellow" } else { "DarkCyan" })
+while ($tick -lt $totalTicks) {
+    $elapsedSec  = [math]::Floor($tick * $tickMs / 1000)
+    $progress    = [math]::Min($tick / $totalTicks, 1.0)
+    $filledCount = [int]($progress * $barWidth)
+    $emptyCount  = $barWidth - $filledCount
+    $filledBar   = [string]::new([char]0x2588, $filledCount)
+    $emptyBar    = [string]::new([char]0x2591, $emptyCount)
+    $frame       = $braille[$tick % $braille.Length]
+    $pct         = [int]($progress * 100)
+
+    if ($found) {
+        $status = "Build detected, finishing up..."
+        $color  = [ConsoleColor]::Yellow
+    } else {
+        $status = "Waiting for initial build..."
+        $color  = [ConsoleColor]::DarkCyan
+    }
+
+    Write-Line -Text "  $frame  $filledBar$emptyBar  ${pct}%  ${elapsedSec}s  $status" -Color $color -NoNewline
 
     if (-not $found -and (Test-Path (Join-Path $HtmlPath "index.html"))) {
         $found = $true
     }
 
-    Start-Sleep -Seconds 1
-    $elapsed++
+    Start-Sleep -Milliseconds $tickMs
+    $tick++
 }
 
-$finalStatus = if ($found) { "Build ready." } else { "dist/html not found yet - BrowserSync will reload once files appear." }
-$finalColor = if ($found) { "Yellow" } else { "Yellow" }
-Write-Host ("`r  $(' ' * 60)") -NoNewline
-Write-Host "`r  $finalStatus" -ForegroundColor $finalColor
+if ($found) {
+    Write-Line -Text "  [OK] Build ready." -Color Green
+} else {
+    Write-Line -Text "  [..] Build not detected yet - BrowserSync will reload when files appear." -Color Yellow
+}
+
 Write-Host ""
 
-# Step 2: CORE - copy dist
-Start-Process wt -ArgumentList "-w 0 new-tab --title `"CORE`" --tabColor `"#2E7D32`" --suppressApplicationTitle -d `"$CorePath`" cmd /k `"git pull & npm run copydist $CopyDistArgs`""
-Start-Sleep -Milliseconds 1500
+# --- Step 2: Core - copy dist ---
+Write-Host "  Starting Core (copydist)..." -ForegroundColor DarkCyan
+$script:childProcs.Add((Start-Process cmd -ArgumentList "/k title CORE & git pull & npm run copydist $($script:CopyDistArgs)" -WorkingDirectory $CorePath -PassThru)) | Out-Null
+Start-Sleep -Milliseconds 500
 
-# Step 3: API-PROXY
-Start-Process wt -ArgumentList "-w 0 new-tab --title `"API-PROXY`" --tabColor `"#D4820A`" --suppressApplicationTitle -d `"$ApiProxyPath`" cmd /k npm run start -- --host $ResolvedProxy"
-Start-Sleep -Milliseconds 1000
+# --- Step 3: API Proxy ---
+Write-Host "  Starting API Proxy ($ResolvedProxy)..." -ForegroundColor DarkCyan
+$script:childProcs.Add((Start-Process cmd -ArgumentList "/k title API-PROXY & npm run start -- --host $ResolvedProxy" -WorkingDirectory $ApiProxyPath -PassThru)) | Out-Null
+Start-Sleep -Milliseconds 500
 
-# Step 4: BROWSERSYNC - launched last so dist is populated
-Start-Process wt -ArgumentList "-w 0 new-tab --title `"BROWSERSYNC`" --tabColor `"#7B1FA2`" --suppressApplicationTitle -d `"$DistPath`" cmd /k browser-sync start --server --port 3002 --startPath /html --files **/*.*"
+# --- Step 4: BrowserSync ---
+Write-Host "  Starting BrowserSync (localhost:3002)..." -ForegroundColor DarkCyan
+$script:childProcs.Add((Start-Process cmd -ArgumentList "/k title BROWSERSYNC & browser-sync start --server --port 3002 --startPath /html --files **/*.*" -WorkingDirectory $script:DistPath -PassThru)) | Out-Null
 
-Write-Host "  All 4 tabs launched in Windows Terminal!" -ForegroundColor Green
-Write-Host ""
+# --- Platform Switch Function ---
+function Switch-Platform {
+    $newFolder = if ($script:PlatformFolder -eq "PC") { "Mobile" } else { "PC" }
+    $newPlatformPath = Join-Path $ProjectPath $newFolder
+
+    if (-not (Test-Path $newPlatformPath)) {
+        Write-Host ""
+        Write-Host "  Platform folder not found: $newPlatformPath" -ForegroundColor Red
+        Write-Host "  Switch cancelled." -ForegroundColor Yellow
+        Start-Sleep -Seconds 2
+        return
+    }
+
+    $newDistPath = Join-Path $newPlatformPath "dist"
+    $newCopyDistArgs = if ($newFolder -eq "PC") { $ProjectName } else { "$ProjectName mobile" }
+
+    Write-Host ""
+    Write-Divider -Color Yellow
+    Write-Host "  Switching to $newFolder..." -ForegroundColor Yellow
+    Write-Divider -Color Yellow
+
+    # Kill Gulp (index 0), Core (index 1), BrowserSync (index 3)
+    foreach ($i in @(0, 1, 3)) {
+        try {
+            if ($script:childProcs[$i] -and -not $script:childProcs[$i].HasExited) {
+                & taskkill /T /F /PID $script:childProcs[$i].Id 2>$null | Out-Null
+            }
+        } catch {}
+    }
+    Start-Sleep -Milliseconds 500
+
+    $script:PlatformFolder = $newFolder
+    $script:PlatformPath   = $newPlatformPath
+    $script:DistPath       = $newDistPath
+    $script:CopyDistArgs   = $newCopyDistArgs
+
+    if (-not (Test-Path $script:DistPath)) {
+        New-Item -ItemType Directory -Path $script:DistPath -Force | Out-Null
+    }
+
+    $gulpCmd = "git pull & npm i & gulp run"
+    $script:childProcs[0] = Start-Process cmd -ArgumentList "/k title GULP RUN $ProjectName & $gulpCmd" -WorkingDirectory $script:PlatformPath -PassThru
+    Start-Sleep -Milliseconds 300
+
+    $script:childProcs[1] = Start-Process cmd -ArgumentList "/k title CORE & git pull & npm run copydist $($script:CopyDistArgs)" -WorkingDirectory $CorePath -PassThru
+    Start-Sleep -Milliseconds 300
+
+    $script:childProcs[3] = Start-Process cmd -ArgumentList "/k title BROWSERSYNC & browser-sync start --server --port 3002 --startPath /html --files **/*.*" -WorkingDirectory $script:DistPath -PassThru
+
+    Write-Host "  Switched to $newFolder. Services restarting..." -ForegroundColor Green
+    Start-Sleep -Milliseconds 500
+}
+
+function Draw-Dashboard {
+    Clear-Host
+    Write-Section "coreboot  -  $ProjectName ($($script:PlatformFolder))"
+
+    $services = @(
+        @{ Icon = [char]0x25B6; Name = "Gulp Build";    Detail = "pull + compile ($($script:PlatformFolder))";   Color = "Cyan"       }
+        @{ Icon = [char]0x25B6; Name = "Core Copydist"; Detail = "pull + copydist $($script:CopyDistArgs)";      Color = "Green"      }
+        @{ Icon = [char]0x25B6; Name = "API Proxy";     Detail = "proxying to $ResolvedProxy";                   Color = "DarkYellow" }
+        @{ Icon = [char]0x25B6; Name = "BrowserSync";   Detail = "http://localhost:3002/html (live-reload)";     Color = "Magenta"    }
+    )
+
+    foreach ($svc in $services) {
+        $icon   = $svc.Icon
+        $name   = $svc.Name.PadRight(16)
+        $detail = $svc.Detail
+        Write-Host "  $icon  " -NoNewline -ForegroundColor $svc.Color
+        Write-Host "$name" -NoNewline -ForegroundColor White
+        Write-Host " $detail" -ForegroundColor DarkGray
+    }
+
+    Write-Host ""
+    Write-Divider
+
+    $pcLabel     = " PC "
+    $mobileLabel = " Mobile "
+    if ($script:PlatformFolder -eq "PC") {
+        $pcStyle     = @{ Fg = "Black"; Bg = "Cyan" }
+        $mobileStyle = @{ Fg = "DarkGray"; Bg = "Black" }
+    } else {
+        $pcStyle     = @{ Fg = "DarkGray"; Bg = "Black" }
+        $mobileStyle = @{ Fg = "Black"; Bg = "Cyan" }
+    }
+
+    Write-Host "  Platform:  " -NoNewline -ForegroundColor White
+    Write-Host $pcLabel -NoNewline -ForegroundColor $pcStyle.Fg -BackgroundColor $pcStyle.Bg
+    Write-Host "  " -NoNewline
+    Write-Host $mobileLabel -ForegroundColor $mobileStyle.Fg -BackgroundColor $mobileStyle.Bg
+    Write-Host ""
+    Write-Host "  Press " -NoNewline -ForegroundColor White
+    Write-Host "[P]" -NoNewline -ForegroundColor Cyan
+    Write-Host " to switch platform   " -NoNewline -ForegroundColor White
+    Write-Host "Ctrl+C" -NoNewline -ForegroundColor Yellow
+    Write-Host " to stop all" -ForegroundColor White
+    Write-Divider
+    Write-Host ""
+}
+
+# --- Final Dashboard ---
+Start-Sleep -Milliseconds 300
+Draw-Dashboard
+
+try {
+    while ($true) {
+        if ([Console]::KeyAvailable) {
+            $key = [Console]::ReadKey($true)
+            if ($key.Key -eq [ConsoleKey]::P) {
+                Switch-Platform
+                Draw-Dashboard
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    }
+} finally {
+    Stop-AllChildren
+}

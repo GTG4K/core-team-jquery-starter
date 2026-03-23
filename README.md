@@ -1,6 +1,6 @@
 # coreboot
 
-Dev environment bootstrapped for our core team
+Dev environment bootstrapper for our core team. One command spins up all four services, and you can hot-switch between PC and Mobile without restarting.
 
 ## What it does
 
@@ -9,14 +9,43 @@ Dev environment bootstrapped for our core team
 3. **API Proxy** - starts the local proxy server
 4. **BrowserSync** - serves the built site at `http://localhost:3002/html` with live reload
 
-The script waits 15seconds for gulp to finish building before launching the rest, so BrowserSync doesn't open to a blank page.
+The script waits up to 15 seconds for the initial Gulp build to produce output before launching the remaining services, so BrowserSync doesn't open to a blank page.
+
+On first run (no `dist/` folder detected), the script automatically runs `npm install` in the platform directory before starting services.
+
+## Interactive Dashboard
+
+Once all services are running, coreboot displays a live dashboard with a platform toggle:
+
+```
+  ────────────────────────────────────────────────────────────
+  coreboot  -  myproject (PC)
+  ────────────────────────────────────────────────────────────
+
+  ▶  Gulp Build        pull + compile (PC)
+  ▶  Core Copydist     pull + copydist myproject
+  ▶  API Proxy         proxying to myproject.com
+  ▶  BrowserSync       http://localhost:3002/html (live-reload)
+
+  ────────────────────────────────────────────────────────────
+  Platform:   PC    Mobile
+  Press [P] to switch platform   Ctrl+C to stop all
+  ────────────────────────────────────────────────────────────
+```
+
+| Key        | Action                                                                                         |
+| ---------- | ---------------------------------------------------------------------------------------------- |
+| `P`        | Toggle between PC and Mobile. Stops Gulp, Core, and BrowserSync, restarts them for the new platform. API Proxy stays running. |
+| `Ctrl+C`   | Gracefully stops all four services and exits.                                                  |
+
+The active platform is highlighted in the toggle. Switching takes about 1-2 seconds — the old platform-specific processes are killed and new ones are spawned with the correct paths.
 
 ## Prerequisites
 
-- [Windows Terminal](https://aka.ms/terminal) installed
-- [Node.js](https://nodejs.org/) and npm on PATH
+- Windows (PowerShell 5.1+)
+- [Node.js](https://nodejs.org/) **v14 or lower** and npm on PATH
 - [Git](https://git-scm.com/) on PATH
-- Global npm packages: `gulp-cli`, `browser-sync`
+- Global npm packages: `gulp-cli`, `browser-sync` (auto-installed if missing)
 
 ### Expected folder structure
 
@@ -41,17 +70,24 @@ The script itself is installed to `%LOCALAPPDATA%\coreboot\` (e.g. `C:\Users\<yo
 
 ## Installation
 
-### Run the install-coreboot.cmd file
-
 Double-click `install-coreboot.cmd`. This will:
 
-1. Copy the script to `%LOCALAPPDATA%\coreboot\`
+1. Copy `coreboot.ps1` to `%LOCALAPPDATA%\coreboot\`
 2. Create a `coreboot.cmd` wrapper in the same folder
 3. Add the folder to your user PATH
 
 No PowerShell profile changes are needed — works with Symantec/endpoint protection policies.
 
 Restart your terminal after installing.
+
+### What gets saved where
+
+| File                                            | Purpose                                  |
+| ----------------------------------------------- | ---------------------------------------- |
+| `%LOCALAPPDATA%\coreboot\coreboot.ps1`          | The main script                          |
+| `%LOCALAPPDATA%\coreboot\coreboot.cmd`          | CMD wrapper so you can type `coreboot`   |
+| `%LOCALAPPDATA%\coreboot\rootpath-map.json`     | Persisted root path setting              |
+| `%LOCALAPPDATA%\coreboot\proxy-map.json`        | Persisted API proxy mappings per project |
 
 ## Usage
 
@@ -63,8 +99,8 @@ coreboot <project> <platform> [-RootPath "path"] [-ApiProxy "domain.tld"]
 | ----------- | -------- | ----------------------------------------------------------------- |
 | `project`   | Yes      | Project folder name (e.g. `goldenbet`, `donbet-co`)               |
 | `platform`  | Yes      | `pc` or `mobile`                                                  |
-| `-RootPath` | No       | Override the root folder (defaults to Documents). Saved globally. |
-| `-ApiProxy` | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project.      |
+| `-RootPath` | No       | Override the root folder (defaults to Documents). Saved globally for future runs. |
+| `-ApiProxy` | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project for future runs.      |
 
 When `-RootPath` is provided, the value is saved to `%LOCALAPPDATA%\coreboot\rootpath-map.json` so future runs will reuse it automatically. If omitted and no saved path exists, the default Documents folder is used.
 
@@ -128,3 +164,28 @@ coreboot donbet-co mobile
 | `-ApiProxy` provided       | Documents                   | The proxy you gave (saved)        |
 | Later run, no flags        | Last saved root path        | Last saved proxy for that project |
 | `-RootPath` provided again | New path (overwrites saved) | Last saved proxy for that project |
+
+## Switching Platforms at Runtime
+
+You don't need to stop and restart the script to switch between PC and Mobile. While the dashboard is running, press **`P`** to toggle.
+
+What happens under the hood:
+
+1. The three platform-specific services (Gulp, Core copydist, BrowserSync) are killed via `taskkill`
+2. Path variables update to point at the other platform folder (`PC/` or `Mobile/`)
+3. New Gulp, Core, and BrowserSync processes are spawned with the updated paths
+4. The API Proxy stays running — it's platform-independent
+
+Both platform folders (`PC/` and `Mobile/`) must exist under the project directory for switching to work. If the target folder is missing, the switch is cancelled and an error is shown.
+
+## Startup Sequence
+
+1. **Validation** - checks Node version (must be v14 or lower), verifies all required folders exist
+2. **Auto-install** - installs `gulp` and `browser-sync` globally if missing; runs `npm install` on first run
+3. **Gulp build** - starts Gulp in a separate terminal window; waits up to 15s with a progress bar for `dist/html/index.html` to appear
+4. **Core copydist** - starts core's `copydist` in a separate terminal window
+5. **API Proxy** - starts the proxy server in a separate terminal window
+6. **BrowserSync** - starts live-reload server at `http://localhost:3002/html`
+7. **Dashboard** - clears the terminal and shows the interactive dashboard with platform toggle
+
+Pressing `Ctrl+C` at any point gracefully terminates all spawned processes.
