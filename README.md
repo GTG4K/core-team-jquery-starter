@@ -5,7 +5,7 @@ Dev environment bootstrapper for our core team. One command spins up all four se
 ## What it does
 
 1. **Gulp** - pulls latest code, installs dependencies, runs the build
-2. **Core** - pulls latest code, copies dist to the project
+2. **Core** - pulls latest code (unless `--IgnoreGIT` is set), copies dist to the project
 3. **API Proxy** - starts the local proxy server
 4. **BrowserSync** - serves the built site at `http://localhost:3002/html` with live reload
 
@@ -33,10 +33,10 @@ Once all services are running, coreboot displays a live dashboard with a platfor
   ────────────────────────────────────────────────────────────
 ```
 
-| Key        | Action                                                                                         |
-| ---------- | ---------------------------------------------------------------------------------------------- |
-| `P`        | Toggle between PC and Mobile. Stops Gulp, Core, and BrowserSync, restarts them for the new platform. API Proxy stays running. |
-| `Ctrl+C`   | Gracefully stops all four services and exits.                                                  |
+| Key      | Action                                                                       |
+| -------- | ---------------------------------------------------------------------------- |
+| `P`      | Toggle platform. Restarts Gulp, Core, BrowserSync (API Proxy stays running). |
+| `Ctrl+C` | Gracefully stops all four services and exits.                                |
 
 The active platform is highlighted in the toggle. Switching takes about 1-2 seconds — the old platform-specific processes are killed and new ones are spawned with the correct paths.
 
@@ -92,15 +92,16 @@ Restart your terminal after installing.
 ## Usage
 
 ```powershell
-coreboot <project> <platform> [-RootPath "path"] [-ApiProxy "domain.tld"]
+coreboot <project> <platform> [-RootPath "path"] [-ApiProxy "domain.tld"] [-IgnoreGIT]
 ```
 
-| Argument    | Required | Description                                                       |
-| ----------- | -------- | ----------------------------------------------------------------- |
-| `project`   | Yes      | Project folder name (e.g. `goldenbet`, `donbet-co`)               |
-| `platform`  | Yes      | `pc` or `mobile`                                                  |
-| `-RootPath` | No       | Override the root folder (defaults to Documents). Saved globally for future runs. |
-| `-ApiProxy` | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project for future runs.      |
+| Argument      | Required | Description                                                                       |
+| ------------- | -------- | --------------------------------------------------------------------------------- |
+| `project`     | Yes      | Project folder name (e.g. `goldenbet`, `donbet-co`)                               |
+| `platform`    | Yes      | `pc` or `mobile`                                                                  |
+| `-RootPath`   | No       | Override the root folder (defaults to Documents). Saved globally for future runs. |
+| `-ApiProxy`   | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project for future runs.     |
+| `-IgnoreGIT`  | No       | Skip `git pull` for Core (preserves local changes).                               |
 
 When `-RootPath` is provided, the value is saved to `%LOCALAPPDATA%\coreboot\rootpath-map.json` so future runs will reuse it automatically. If omitted and no saved path exists, the default Documents folder is used.
 
@@ -143,6 +144,16 @@ coreboot donbet-co mobile
 
 # Other projects are not affected — goldenbet still defaults to goldenbet.com
 coreboot goldenbet pc
+```
+
+#### Skip core git pull (`-IgnoreGIT`)
+
+```powershell
+# Start without pulling the latest core — handy when you have local changes in core
+coreboot goldenbet pc -IgnoreGIT
+
+# Can be combined with other flags
+coreboot donbet-co mobile -ApiProxy "donbet.co" -IgnoreGIT
 ```
 
 #### Combining both

@@ -10,7 +10,9 @@ param(
 
     [string]$ApiProxy,
 
-    [switch]$Install
+    [switch]$Install,
+
+    [switch]$IgnoreGIT
 )
 
 if ($Install) {
@@ -53,7 +55,7 @@ if ($Install) {
 
 if (-not $ProjectName -or -not $Platform) {
     Write-Host ""
-    Write-Host "  Usage:  coreboot <project> <pc|mobile> [-RootPath `"path`"] [-ApiProxy `"domain.tld`"]" -ForegroundColor Cyan
+    Write-Host "  Usage:  coreboot <project> <pc|mobile> [-RootPath `"path`"] [-ApiProxy `"domain.tld`"] [-IgnoreGIT]" -ForegroundColor Cyan
     Write-Host "  Install: .\bootstrap.ps1 -Install" -ForegroundColor DarkGray
     Write-Host ""
     exit 1
@@ -335,7 +337,8 @@ Write-Host ""
 
 # --- Step 2: Core - copy dist ---
 Write-Host "  Starting Core (copydist)..." -ForegroundColor DarkCyan
-$script:childProcs.Add((Start-Process cmd -ArgumentList "/k title CORE & git pull & npm run copydist $($script:CopyDistArgs)" -WorkingDirectory $CorePath -PassThru)) | Out-Null
+$corePullCmd = if ($IgnoreGIT) { "npm run copydist $($script:CopyDistArgs)" } else { "git pull & npm run copydist $($script:CopyDistArgs)" }
+$script:childProcs.Add((Start-Process cmd -ArgumentList "/k title CORE & $corePullCmd" -WorkingDirectory $CorePath -PassThru)) | Out-Null
 Start-Sleep -Milliseconds 500
 
 # --- Step 3: API Proxy ---
@@ -391,7 +394,8 @@ function Switch-Platform {
     $script:childProcs[0] = Start-Process cmd -ArgumentList "/k title GULP RUN $ProjectName & $gulpCmd" -WorkingDirectory $script:PlatformPath -PassThru
     Start-Sleep -Milliseconds 300
 
-    $script:childProcs[1] = Start-Process cmd -ArgumentList "/k title CORE & git pull & npm run copydist $($script:CopyDistArgs)" -WorkingDirectory $CorePath -PassThru
+    $corePullCmd = if ($IgnoreGIT) { "npm run copydist $($script:CopyDistArgs)" } else { "git pull & npm run copydist $($script:CopyDistArgs)" }
+    $script:childProcs[1] = Start-Process cmd -ArgumentList "/k title CORE & $corePullCmd" -WorkingDirectory $CorePath -PassThru
     Start-Sleep -Milliseconds 300
 
     $script:childProcs[3] = Start-Process cmd -ArgumentList "/k title BROWSERSYNC & browser-sync start --server --port 3002 --startPath /html --files **/*.*" -WorkingDirectory $script:DistPath -PassThru
