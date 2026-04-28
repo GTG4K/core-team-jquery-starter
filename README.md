@@ -82,12 +82,12 @@ Restart your terminal after installing.
 
 ### What gets saved where
 
-| File                                            | Purpose                                  |
-| ----------------------------------------------- | ---------------------------------------- |
-| `%LOCALAPPDATA%\coreboot\coreboot.ps1`          | The main script                          |
-| `%LOCALAPPDATA%\coreboot\coreboot.cmd`          | CMD wrapper so you can type `coreboot`   |
-| `%LOCALAPPDATA%\coreboot\rootpath-map.json`     | Persisted root path setting              |
-| `%LOCALAPPDATA%\coreboot\proxy-map.json`        | Persisted API proxy mappings per project |
+| File                                        | Purpose                                  |
+| ------------------------------------------- | ---------------------------------------- |
+| `%LOCALAPPDATA%\coreboot\coreboot.ps1`      | The main script                          |
+| `%LOCALAPPDATA%\coreboot\coreboot.cmd`      | CMD wrapper so you can type `coreboot`   |
+| `%LOCALAPPDATA%\coreboot\rootpath-map.json` | Persisted root path setting              |
+| `%LOCALAPPDATA%\coreboot\proxy-map.json`    | Persisted API proxy mappings per project |
 
 ## Usage
 
@@ -95,13 +95,13 @@ Restart your terminal after installing.
 coreboot <project> <platform> [-RootPath "path"] [-ApiProxy "domain.tld"] [-IgnoreGIT]
 ```
 
-| Argument      | Required | Description                                                                       |
-| ------------- | -------- | --------------------------------------------------------------------------------- |
-| `project`     | Yes      | Project folder name (e.g. `goldenbet`, `donbet-co`)                               |
-| `platform`    | Yes      | `pc` or `mobile`                                                                  |
-| `-RootPath`   | No       | Override the root folder (defaults to Documents). Saved globally for future runs. |
-| `-ApiProxy`   | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project for future runs.     |
-| `-IgnoreGIT`  | No       | Skip `git pull` for Core (preserves local changes).                               |
+| Argument     | Required | Description                                                                       |
+| ------------ | -------- | --------------------------------------------------------------------------------- |
+| `project`    | Yes      | Project folder name (e.g. `goldenbet`, `donbet-co`)                               |
+| `platform`   | Yes      | `pc` or `mobile`                                                                  |
+| `-RootPath`  | No       | Override the root folder (defaults to Documents). Saved globally for future runs. |
+| `-ApiProxy`  | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project for future runs.      |
+| `-IgnoreGIT` | No       | Skip `git pull` for Core (preserves local changes).                               |
 
 When `-RootPath` is provided, the value is saved to `%LOCALAPPDATA%\coreboot\rootpath-map.json` so future runs will reuse it automatically. If omitted and no saved path exists, the default Documents folder is used.
 
