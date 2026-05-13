@@ -1,12 +1,12 @@
 # coreboot
 
-Dev environment bootstrapper for our core team. One command spins up all four services, and you can hot-switch between PC and Mobile without restarting.
+Dev environment bootstrapper for our core team. One command spins up the usual four services (or three if you use `-NoProxy`), and you can hot-switch between PC and Mobile without restarting.
 
 ## What it does
 
 1. **Gulp** - pulls latest code, installs dependencies, runs the build
-2. **Core** - pulls latest code (unless `--IgnoreGIT` is set), copies dist to the project
-3. **API Proxy** - starts the local proxy server
+2. **Core** - pulls latest code (unless `-IgnoreGIT` is set), copies dist to the project
+3. **API Proxy** - starts the local proxy server (skipped if `-NoProxy` is set — the script prints the exact manual command instead)
 4. **BrowserSync** - serves the built site at `http://localhost:3002/html` with live reload
 
 The script waits up to 15 seconds for the initial Gulp build to produce output before launching the remaining services, so BrowserSync doesn't open to a blank page.
@@ -17,7 +17,7 @@ On first run (no `dist/` folder detected), the script automatically runs `npm in
 
 Once all services are running, coreboot displays a live dashboard with a platform toggle:
 
-```
+```text
   ────────────────────────────────────────────────────────────
   coreboot  -  myproject (PC)
   ────────────────────────────────────────────────────────────
@@ -33,10 +33,13 @@ Once all services are running, coreboot displays a live dashboard with a platfor
   ────────────────────────────────────────────────────────────
 ```
 
+With `-NoProxy`, the API Proxy line shows as skipped and includes the manual start command for copy-paste.
+
 | Key      | Action                                                                       |
 | -------- | ---------------------------------------------------------------------------- |
-| `P`      | Toggle platform. Restarts Gulp, Core, BrowserSync (API Proxy stays running). |
-| `Ctrl+C` | Gracefully stops all four services and exits.                                |
+| `P`      | Toggle platform. Restarts Gulp, Core, BrowserSync                            |
+|          | (API Proxy stays running unless you started with `-NoProxy`).                |
+| `Ctrl+C` | Gracefully stops all spawned processes and exits.                            |
 
 The active platform is highlighted in the toggle. Switching takes about 1-2 seconds — the old platform-specific processes are killed and new ones are spawned with the correct paths.
 
@@ -49,9 +52,9 @@ The active platform is highlighted in the toggle. Switching takes about 1-2 seco
 
 ### Expected folder structure
 
-All repos should live under the same root folder (defaults to your Documents folder):
+All repos should live under the same root folder (defaults to your Documents folder). The `api-proxy/` folder is not required when you pass `-NoProxy` (you can start the proxy yourself in another terminal).
 
-```
+```text
 Documents/
   api-proxy/
   core/
@@ -92,7 +95,7 @@ Restart your terminal after installing.
 ## Usage
 
 ```powershell
-coreboot <project> <platform> [-RootPath "path"] [-ApiProxy "domain.tld"] [-IgnoreGIT]
+coreboot <project> <platform> [-RootPath "path"] [-ApiProxy "domain.tld"] [-IgnoreGIT] [-NoProxy]
 ```
 
 | Argument     | Required | Description                                                                       |
@@ -102,6 +105,7 @@ coreboot <project> <platform> [-RootPath "path"] [-ApiProxy "domain.tld"] [-Igno
 | `-RootPath`  | No       | Override the root folder (defaults to Documents). Saved globally for future runs. |
 | `-ApiProxy`  | No       | Custom api-proxy host (e.g. `donbet.co`). Saved per project for future runs.      |
 | `-IgnoreGIT` | No       | Skip `git pull` for Core (preserves local changes).                               |
+| `-NoProxy`   | No       | Do not start API Proxy; prints cmd to run manually. Skips api-proxy folder check. |
 
 When `-RootPath` is provided, the value is saved to `%LOCALAPPDATA%\coreboot\rootpath-map.json` so future runs will reuse it automatically. If omitted and no saved path exists, the default Documents folder is used.
 
@@ -156,6 +160,18 @@ coreboot goldenbet pc -IgnoreGIT
 coreboot donbet-co mobile -ApiProxy "donbet.co" -IgnoreGIT
 ```
 
+#### Run without API Proxy (`-NoProxy`)
+
+```powershell
+# Everything except the proxy: Gulp, Core, and BrowserSync still start
+# The console prints the exact command to start the proxy (cd + npm run start -- --host ...)
+coreboot donbet-co mobile -NoProxy
+
+# No need for api-proxy to exist under your root when using -NoProxy
+# Combine with other flags as needed
+coreboot donbet-co mobile -ApiProxy "donbet.co" -NoProxy
+```
+
 #### Combining both
 
 ```powershell
@@ -185,17 +201,19 @@ What happens under the hood:
 1. The three platform-specific services (Gulp, Core copydist, BrowserSync) are killed via `taskkill`
 2. Path variables update to point at the other platform folder (`PC/` or `Mobile/`)
 3. New Gulp, Core, and BrowserSync processes are spawned with the updated paths
-4. The API Proxy stays running — it's platform-independent
+4. The API Proxy stays running — it's platform-independent (if you did not use `-NoProxy`)
+
+If you started coreboot with `-NoProxy`, the API Proxy process is omitted entirely, so pressing `P` still only rotates Gulp, Core, and BrowserSync.
 
 Both platform folders (`PC/` and `Mobile/`) must exist under the project directory for switching to work. If the target folder is missing, the switch is cancelled and an error is shown.
 
 ## Startup Sequence
 
-1. **Validation** - checks Node version (must be v14 or lower), verifies all required folders exist
+1. **Validation** - checks Node version (must be v14 or lower), verifies project and `core` exist; verifies `api-proxy` exists unless `-NoProxy` is set
 2. **Auto-install** - installs `gulp` and `browser-sync` globally if missing; runs `npm install` on first run
 3. **Gulp build** - starts Gulp in a separate terminal window; waits up to 15s with a progress bar for `dist/html/index.html` to appear
 4. **Core copydist** - starts core's `copydist` in a separate terminal window
-5. **API Proxy** - starts the proxy server in a separate terminal window
+5. **API Proxy** - starts the proxy server in a separate terminal window (or prints the manual command and skips this step when `-NoProxy` is set)
 6. **BrowserSync** - starts live-reload server at `http://localhost:3002/html`
 7. **Dashboard** - clears the terminal and shows the interactive dashboard with platform toggle
 

@@ -12,7 +12,9 @@ param(
 
     [switch]$Install,
 
-    [switch]$IgnoreGIT
+    [switch]$IgnoreGIT,
+
+    [switch]$NoProxy
 )
 
 if ($Install) {
@@ -48,14 +50,14 @@ if ($Install) {
     Write-Host ""
     Write-Host "  Installed to: $installDir" -ForegroundColor Green
     Write-Host "  Restart your terminal, then run:" -ForegroundColor White
-    Write-Host "    coreboot <project> <pc|mobile> [-RootPath `"path`"] [-ApiProxy `"domain.tld`"]" -ForegroundColor Cyan
+    Write-Host "    coreboot <project> <pc|mobile> [-RootPath `"path`"] [-ApiProxy `"domain.tld`"] [-NoProxy]" -ForegroundColor Cyan
     Write-Host ""
     exit 0
 }
 
 if (-not $ProjectName -or -not $Platform) {
     Write-Host ""
-    Write-Host "  Usage:  coreboot <project> <pc|mobile> [-RootPath `"path`"] [-ApiProxy `"domain.tld`"] [-IgnoreGIT]" -ForegroundColor Cyan
+    Write-Host "  Usage:  coreboot <project> <pc|mobile> [-RootPath `"path`"] [-ApiProxy `"domain.tld`"] [-IgnoreGIT] [-NoProxy]" -ForegroundColor Cyan
     Write-Host "  Install: .\bootstrap.ps1 -Install" -ForegroundColor DarkGray
     Write-Host ""
     exit 1
@@ -171,7 +173,7 @@ if (-not (Test-Path $script:PlatformPath)) {
     Write-Host "Platform folder not found: $script:PlatformPath" -ForegroundColor Red
     exit 1
 }
-if (-not (Test-Path $ApiProxyPath)) {
+if (-not $NoProxy -and -not (Test-Path $ApiProxyPath)) {
     Write-Host "api-proxy not found at '$ApiProxyPath'. Clone the api-proxy repo into '$DocsRoot' and try again." -ForegroundColor Red
     exit 1
 }
@@ -342,9 +344,18 @@ $script:childProcs.Add((Start-Process cmd -ArgumentList "/k title CORE & $corePu
 Start-Sleep -Milliseconds 500
 
 # --- Step 3: API Proxy ---
-Write-Host "  Starting API Proxy ($ResolvedProxy)..." -ForegroundColor DarkCyan
-$script:childProcs.Add((Start-Process cmd -ArgumentList "/k title API-PROXY & npm run start -- --host $ResolvedProxy" -WorkingDirectory $ApiProxyPath -PassThru)) | Out-Null
-Start-Sleep -Milliseconds 500
+if ($NoProxy) {
+    Write-Host "  [SKIPPED] API Proxy (-NoProxy flag set)" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  To start the proxy manually, run:" -ForegroundColor White
+    Write-Host "    cd `"$ApiProxyPath`" && npm run start -- --host $ResolvedProxy" -ForegroundColor Cyan
+    Write-Host ""
+    $script:childProcs.Add($null) | Out-Null
+} else {
+    Write-Host "  Starting API Proxy ($ResolvedProxy)..." -ForegroundColor DarkCyan
+    $script:childProcs.Add((Start-Process cmd -ArgumentList "/k title API-PROXY & npm run start -- --host $ResolvedProxy" -WorkingDirectory $ApiProxyPath -PassThru)) | Out-Null
+    Start-Sleep -Milliseconds 500
+}
 
 # --- Step 4: BrowserSync ---
 Write-Host "  Starting BrowserSync (localhost:3002)..." -ForegroundColor DarkCyan
@@ -371,8 +382,9 @@ function Switch-Platform {
     Write-Host "  Switching to $newFolder..." -ForegroundColor Yellow
     Write-Divider -Color Yellow
 
-    # Kill Gulp (index 0), Core (index 1), BrowserSync (index 3)
-    foreach ($i in @(0, 1, 3)) {
+    $killIndices = @(0, 1, 3)
+    if (-not $NoProxy) { $killIndices += 2 }
+    foreach ($i in $killIndices) {
         try {
             if ($script:childProcs[$i] -and -not $script:childProcs[$i].HasExited) {
                 & taskkill /T /F /PID $script:childProcs[$i].Id 2>$null | Out-Null
@@ -398,6 +410,11 @@ function Switch-Platform {
     $script:childProcs[1] = Start-Process cmd -ArgumentList "/k title CORE & $corePullCmd" -WorkingDirectory $CorePath -PassThru
     Start-Sleep -Milliseconds 300
 
+    if (-not $NoProxy) {
+        $script:childProcs[2] = Start-Process cmd -ArgumentList "/k title API-PROXY & npm run start -- --host $ResolvedProxy" -WorkingDirectory $ApiProxyPath -PassThru
+        Start-Sleep -Milliseconds 300
+    }
+
     $script:childProcs[3] = Start-Process cmd -ArgumentList "/k title BROWSERSYNC & browser-sync start --server --port 3002 --startPath /html --files **/*.*" -WorkingDirectory $script:DistPath -PassThru
 
     Write-Host "  Switched to $newFolder. Services restarting..." -ForegroundColor Green
@@ -408,10 +425,14 @@ function Draw-Dashboard {
     Clear-Host
     Write-Section "coreboot  -  $ProjectName ($($script:PlatformFolder))"
 
+    $proxyIcon   = if ($NoProxy) { [char]0x25AA } else { [char]0x25B6 }
+    $proxyDetail = if ($NoProxy) { "SKIPPED  -  run: cd `"$ApiProxyPath`" && npm run start -- --host $ResolvedProxy" } else { "proxying to $ResolvedProxy" }
+    $proxyColor  = if ($NoProxy) { "DarkGray" } else { "DarkYellow" }
+
     $services = @(
         @{ Icon = [char]0x25B6; Name = "Gulp Build";    Detail = "pull + compile ($($script:PlatformFolder))";   Color = "Cyan"       }
         @{ Icon = [char]0x25B6; Name = "Core Copydist"; Detail = "pull + copydist $($script:CopyDistArgs)";      Color = "Green"      }
-        @{ Icon = [char]0x25B6; Name = "API Proxy";     Detail = "proxying to $ResolvedProxy";                   Color = "DarkYellow" }
+        @{ Icon = $proxyIcon;   Name = "API Proxy";     Detail = $proxyDetail;                                   Color = $proxyColor  }
         @{ Icon = [char]0x25B6; Name = "BrowserSync";   Detail = "http://localhost:3002/html (live-reload)";     Color = "Magenta"    }
     )
 
